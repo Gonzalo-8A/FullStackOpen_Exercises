@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
+import personsService from './services/persons.js'
 import Filter from './components/Filter'
 import PersonForm from './components/PersonForm'
 import Persons from './components/Persons.jsx'
@@ -11,31 +12,56 @@ const App = () => {
   const [filter, setFilter] = useState('')
 
   useEffect(() => {
-    axios.get('http://localhost:3001/persons')
-      .then(response => {
-        setPersons(response.data)
-      })
+    personsService.getAll().then((initialPersons) => {
+      setPersons(initialPersons)
+    })
   }, [])
 
   const addNewPhone = (event) => {
     event.preventDefault()
-    if(newName === '' || newPhone === ''){
-      return
-    }
-    const isAlreadyAdded = persons.find(el => el.name === newName)
-    if(isAlreadyAdded) {
-      alert(`${newName} is already added to phonebook`)
+
+    if (newName === '' || newPhone === '') {
       return
     }
 
     const newPerson = {
       name: newName,
-      number: newPhone
+      number: newPhone,
     }
 
-    setPersons(prev => prev.concat(newPerson))
-    setNewName('')
-    setNewPhone('')
+    const person = persons.find((p) => p.name === newName)
+
+    if(person) {
+      if (
+        window.confirm(
+          `${person.name} is already added to the phonebook, replace the old number with a new one?`
+        )
+      ) {
+        personsService
+          .update(person.id, newPerson)
+          .then((updatedPerson) => {
+            setPersons((prev) => prev.map((p) => (p.id === updatedPerson.id ? updatedPerson : p)))
+            setNewName('')
+            setNewPhone('')
+          })
+          .catch((error) => {
+            console.error('Error updating person:', error)
+            alert(`Failed to update ${person.name}. They may have been removed from the server.`)
+          })
+      } else return
+    } else {
+          personsService
+      .create(newPerson)
+      .then((createdPerson) => {
+        setPersons((prev) => prev.concat(createdPerson))
+        setNewName('')
+        setNewPhone('')
+      })
+      .catch((error) => {
+        console.error('Error adding person:', error)
+        alert('Failed to add new person, please try again later.')
+      })
+    }
   }
 
   const handleNameChange = (event) => {
@@ -50,7 +76,17 @@ const App = () => {
     setFilter(event.target.value)
   }
 
-  const filteredPersons = persons.filter(p => p.name.includes(filter))
+  const deletePerson = (id) => {
+    const person = persons.find((p) => p.id === id)
+    if (!person) return
+    if (window.confirm(`Are you sure you want to delete ${person.name}`)) {
+      personsService.remove(id).then(() => {
+        setPersons((prev) => prev.filter((p) => p.id !== id))
+      })
+    } else return
+  }
+
+  const filteredPersons = persons.filter((p) => p.name.includes(filter))
 
   return (
     <div>
@@ -65,7 +101,7 @@ const App = () => {
         onPhoneChange={handlePhoneChange}
       />
       <h2>Numbers</h2>
-    <Persons filteredPersons={filteredPersons}/>
+      <Persons filteredPersons={filteredPersons} onClick={deletePerson} />
     </div>
   )
 }
