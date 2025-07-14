@@ -1,15 +1,22 @@
+import './App.css'
+
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import personsService from './services/persons.js'
 import Filter from './components/Filter'
 import PersonForm from './components/PersonForm'
 import Persons from './components/Persons.jsx'
+import Notification from './components/Notification.jsx'
 
 const App = () => {
   const [persons, setPersons] = useState([])
   const [newName, setNewName] = useState('')
   const [newPhone, setNewPhone] = useState('')
   const [filter, setFilter] = useState('')
+  const [message, setMessage] = useState({
+    text: null,
+    type: ''
+  })
 
   useEffect(() => {
     personsService.getAll().then((initialPersons) => {
@@ -43,10 +50,17 @@ const App = () => {
             setPersons((prev) => prev.map((p) => (p.id === updatedPerson.id ? updatedPerson : p)))
             setNewName('')
             setNewPhone('')
+            setMessage({text: `${updatedPerson.name} was successfully updated`, type: 'add'})
+            setTimeout(() => {
+              setMessage({text: null, type: ''})
+            }, 5000)
           })
           .catch((error) => {
             console.error('Error updating person:', error)
-            alert(`Failed to update ${person.name}. They may have been removed from the server.`)
+            setMessage({text: `Failed to update ${person.name}. They may have been removed from the server.`, type: 'error'})
+            setTimeout(() => {
+              setMessage({text: null, type: ''})
+            }, 5000)
           })
       } else return
     } else {
@@ -56,10 +70,17 @@ const App = () => {
         setPersons((prev) => prev.concat(createdPerson))
         setNewName('')
         setNewPhone('')
+        setMessage({text: `${createdPerson.name} was successfully added`, type: 'add'})
+        setTimeout(() => {
+          setMessage({text: null, type: ''})
+        }, 5000)
       })
       .catch((error) => {
         console.error('Error adding person:', error)
-        alert('Failed to add new person, please try again later.')
+        setMessage({text: 'Failed to add new person, please try again later.', type: 'error'})
+        setTimeout(() => {
+          setMessage({text: null, type: ''})
+        }, 5000)
       })
     }
   }
@@ -80,9 +101,26 @@ const App = () => {
     const person = persons.find((p) => p.id === id)
     if (!person) return
     if (window.confirm(`Are you sure you want to delete ${person.name}`)) {
-      personsService.remove(id).then(() => {
-        setPersons((prev) => prev.filter((p) => p.id !== id))
-      })
+      personsService
+        .remove(id)
+        .then(() => {
+          setPersons((prev) => prev.filter((p) => p.id !== id))
+          setMessage({ text: `${person.name} successfully removed`, type: 'delete' })
+          setTimeout(() => {
+            setMessage({ text: null, type: '' })
+          }, 5000)
+        })
+        .catch((error) => {
+          console.log(error)
+          setMessage({
+            text: `Information of ${person.name} has already been removed from server`,
+            type: 'delete',
+          })
+          setPersons((prev) => prev.filter((p) => p.id !== id))
+          setTimeout(() => {
+            setMessage({ text: null, type: '' })
+          }, 5000)
+        })
     } else return
   }
 
@@ -91,6 +129,7 @@ const App = () => {
   return (
     <div>
       <h2>Phonebook</h2>
+      <Notification message={message}/>
       <Filter value={filter} onChange={handleFilterChange} />
       <h2>Add a new Contact</h2>
       <PersonForm
