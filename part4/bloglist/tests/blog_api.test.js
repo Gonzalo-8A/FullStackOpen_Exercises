@@ -4,6 +4,7 @@ const app = require('../app')
 const api = supertest(app)
 
 const Blog = require('../models/blog')
+const User = require('../models/user')
 
 const initialBlogs = [
   {
@@ -20,9 +21,42 @@ const initialBlogs = [
   },
 ]
 
+let token = ''
+let userId = ''
+
+beforeAll(async () => {
+  await User.deleteMany({})
+
+  const newUser = {
+    username: 'testgonzalo',
+    name: 'Test Gonzalo',
+    password: 'testpass',
+  }
+
+  const userResponse = await api.post('/api/users').send(newUser)
+  userId = userResponse.body.id
+
+  const loginResponse = await api.post('/api/login').send({
+    username: newUser.username,
+    password: newUser.password,
+  })
+  token = loginResponse.body.token
+})
+
 beforeEach(async () => {
   await Blog.deleteMany({})
-  await Blog.insertMany(initialBlogs)
+
+  const user = await User.findById(userId)
+
+  user.blogs = []
+
+  for (const blog of initialBlogs) {
+    const blogObj = new Blog({ ...blog, user: user._id })
+    const savedBlog = await blogObj.save()
+    user.blogs = user.blogs.concat(savedBlog._id)
+  }
+
+  await user.save()
 })
 
 test('blogs are returned as json', async () => {
@@ -47,7 +81,7 @@ test('unique identifier property of blog posts is named id', async () => {
   })
 })
 
-test('a valid blog can be added', async () => {
+test('a valid blog can be added with token', async () => {
   const newBlog = {
     title: 'Dogs Blog',
     author: 'Gonzalo',
@@ -57,6 +91,7 @@ test('a valid blog can be added', async () => {
 
   await api
     .post('/api/blogs')
+    .set('Authorization', `Bearer ${token}`)
     .send(newBlog)
     .expect(201)
     .expect('Content-Type', /application\/json/)
@@ -68,6 +103,17 @@ test('a valid blog can be added', async () => {
   expect(titles).toContain('Dogs Blog')
 })
 
+test('adding a blog fails with status 401 if token is not provided', async () => {
+  const newBlog = {
+    title: 'Unauthorized Blog',
+    author: 'Intruder',
+    url: 'http://unauthorized.com',
+    likes: 10,
+  }
+
+  await api.post('/api/blogs').send(newBlog).expect(401)
+})
+
 test('if the likes property is missing from the request, it will default to the value 0', async () => {
   const newBlog = {
     title: 'Cats Blog',
@@ -75,7 +121,11 @@ test('if the likes property is missing from the request, it will default to the 
     url: 'http://nolikes.com',
   }
 
-  const response = await api.post('/api/blogs').send(newBlog).expect(201)
+  const response = await api
+    .post('/api/blogs')
+    .set('Authorization', `Bearer ${token}`)
+    .send(newBlog)
+    .expect(201)
 
   expect(response.body.likes).toBe(0)
 })
@@ -87,7 +137,7 @@ test('blog without title error 400', async () => {
     likes: 2,
   }
 
-  await api.post('/api/blogs').send(newBlog).expect(400)
+  await api.post('/api/blogs').set('Authorization', `Bearer ${token}`).send(newBlog).expect(400)
 })
 
 test('blog without url error 400', async () => {
@@ -97,19 +147,27 @@ test('blog without url error 400', async () => {
     likes: 2,
   }
 
-  await api.post('/api/blogs').send(newBlog).expect(400)
+  await api.post('/api/blogs').set('Authorization', `Bearer ${token}`).send(newBlog).expect(400)
 })
 
 test('a blog can be deleted', async () => {
+  const loginResponse = await api.post('/api/login').send({
+    username: 'testgonzalo',
+    password: 'testpass',
+  })
+
+  const token = loginResponse.body.token
+
   const blogsAtStart = await api.get('/api/blogs')
   const blogToDelete = blogsAtStart.body[0]
 
   await api
     .delete(`/api/blogs/${blogToDelete.id}`)
+    .set('Authorization', `Bearer ${token}`)
     .expect(204)
 
   const blogsAtEnd = await api.get('/api/blogs')
-  const ids = blogsAtEnd.body.map(b => b.id)
+  const ids = blogsAtEnd.body.map((b) => b.id)
 
   expect(blogsAtEnd.body).toHaveLength(blogsAtStart.body.length - 1)
   expect(ids).not.toContain(blogToDelete.id)
@@ -119,8 +177,10 @@ test("a blog's likes can be updated", async () => {
   const blogsAtStart = await api.get('/api/blogs')
   const blogToUpdate = blogsAtStart.body[0]
 
+  const { user, ...rest } = blogToUpdate
+
   const updatedData = {
-    ...blogToUpdate,
+    ...rest,
     likes: blogToUpdate.likes + 1,
   }
 
@@ -128,7 +188,6 @@ test("a blog's likes can be updated", async () => {
 
   expect(response.body.likes).toBe(blogToUpdate.likes + 1)
 })
-
 
 afterAll(async () => {
   await mongoose.connection.close()
