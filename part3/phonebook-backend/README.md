@@ -4,6 +4,9 @@ This repository contains the backend for the Phonebook application from the Full
 
 ## Link to the deployed application
 
+You can access the repository for de app here:
+(https://github.com/Gonzalo-8A/fullstack-phonebook-backend) It was moved to other repository for Render facility.
+
 You can access the backend app here:
 [https://fullstack-phonebook-backend-zu29.onrender.com](https://fullstack-phonebook-backend-zu29.onrender.com)
 
